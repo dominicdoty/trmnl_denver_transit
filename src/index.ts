@@ -9,7 +9,7 @@ const tFmt = new Intl.DateTimeFormat([], {
   hour12: true,
   timeStyle: "short",
 });
-const DEFAULT_CARS = [""];
+const DEFAULT_CARS: string[] = [];
 
 app.get("/", async (c) => {
   const {
@@ -98,10 +98,15 @@ app.get("/", async (c) => {
     cars: v.cars,
     scheduledTime: tFmt.format(v.scheduledTime),
     actualTime: tFmt.format(v.actualTime),
+    minutesToArrival: (v.actualTime.getTime() - now.getTime()) / 1000 / 60,
     isLate: v.isLate,
   }));
 
-  return c.json({ stop_display_name, route_display_name, trainJson });
+  return c.json({
+    stopDisplayName: stop_display_name,
+    routeDisplayName: route_display_name,
+    trains: trainJson,
+  });
 });
 
 export default app;
