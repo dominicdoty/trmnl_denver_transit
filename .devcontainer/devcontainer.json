@@ -1,0 +1,17 @@
+// See https://containers.dev/implementors/json_reference/ for configuration reference
+{
+	"name": "Node General",
+	"image": "mcr.microsoft.com/devcontainers/typescript-node",
+	"mounts": [
+		"source=${localEnv:HOME}/.ssh,target=/home/node/.ssh,type=bind,consistency=cached"
+	],
+	"remoteUser": "node",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"esbenp.prettier-vscode",
+				"saoudrizwan.claude-dev"
+			]
+		}
+	}
+}
