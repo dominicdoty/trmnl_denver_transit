@@ -7,4 +7,4 @@ export const config = {
 };
 
 export const GTFSRT_URL =
-  "https://www.rtd-denver.com/files/gtfs-rt/TripUpdate.pb";
+  "https://open-data.rtd-denver.com/files/gtfs-rt/rtd/TripUpdate.pb";

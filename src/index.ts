@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { StatusCodes } from "http-status-codes";
-import GtfsRealtimeBindings from "gtfs-realtime-bindings";
+import { extractStopUpdates } from "./gtfs_rt.js";
+import { DATA } from "./gtfs_schedule.js";
+import { localNow, minutesToDate, upcomingArrivals } from "./schedule.js";
 import { GTFSRT_URL } from "./config.js";
 
 const app = new Hono();
@@ -13,8 +15,8 @@ const DEFAULT_CARS: string[] = [];
 
 app.get("/", async (c) => {
   const {
-    stop_display_name = "Stop",
-    route_display_name = "Route",
+    stop_display_name,
+    route_display_name,
     stop_id,
     route_id,
   } = c.req.query();
@@ -34,62 +36,40 @@ app.get("/", async (c) => {
     isLate: boolean;
   }
 
-  // Formulate Scheduled stops
-  // TODO: This is hard coded for my stop right now
-  const stopMinutes = [8, 23, 38, 53];
-  const now = new Date(Date.now());
+  // Names come from the baked schedule unless the caller overrides them.
+  const stopName = stop_display_name ?? DATA.stops[stop_id] ?? "Stop";
+  const routeName = route_display_name ?? DATA.routes[route_id] ?? "Route";
 
-  let trains: Train[] = Array.prototype
-    .concat(
-      stopMinutes.filter((v) => v > now.getMinutes()),
-      stopMinutes.map((v) => v + 1 * 60),
-      stopMinutes.map((v) => v + 2 * 60),
-      stopMinutes.map((v) => v + 3 * 60)
-    )
-    .slice(0, 10)
-    .map((v) => {
-      let hourZero = new Date(now);
-      hourZero.setMinutes(0, 0, 0);
-      const arrivalTime = new Date(hourZero.getTime() + v * 60 * 1000);
-      const arrivalDeltaMinutes =
-        arrivalTime.getTime() - now.getTime() / 1000 / 60;
-      return {
-        cars: DEFAULT_CARS,
-        scheduledTime: arrivalTime,
-        actualTime: arrivalTime,
-        isLate: false,
-      };
-    });
+  // Scheduled departures come from the baked GTFS schedule.
+  const now = new Date(Date.now());
+  const local = localNow(now);
+  const scheduled = upcomingArrivals(route_id, stop_id, 10, local);
+
+  const trains: Train[] = scheduled.map((minutes) => {
+    const scheduledTime = minutesToDate(minutes, local);
+    return {
+      cars: DEFAULT_CARS,
+      scheduledTime,
+      actualTime: scheduledTime,
+      isLate: false,
+    };
+  });
 
   // Fetch real time status data
   const resp = await fetch(GTFSRT_URL, { method: "GET", redirect: "follow" });
-  const body = await resp.arrayBuffer();
-  const update = GtfsRealtimeBindings.transit_realtime.FeedMessage.decode(
-    new Uint8Array(body)
-  );
+  const body = new Uint8Array(await resp.arrayBuffer());
+  const stopUpdates = extractStopUpdates(body, route_id, stop_id);
 
-  // Find updates on route
-  const routeEnts = update.entity.filter(
-    (v) => v.tripUpdate?.trip.routeId == route_id
-  );
-
-  // Find stopTimeUpdates that are applicable to our stop
-  for (let ent of routeEnts) {
-    for (let stopTimeUpdate of ent.tripUpdate?.stopTimeUpdate ?? []) {
-      if (stopTimeUpdate.stopId == stop_id) {
-        const uTime = (stopTimeUpdate.arrival?.time ?? 0) as number;
-        const arrivalTime = new Date(uTime * 1000);
-        const cars = ent.tripUpdate?.vehicle?.label?.split(",") ?? DEFAULT_CARS;
-
-        for (let train of trains) {
-          const tDeltaMin =
-            (arrivalTime.getTime() - train.scheduledTime.getTime()) / 1000 / 60;
-          if (tDeltaMin > 0 && tDeltaMin < 15) {
-            train.cars = cars;
-            train.actualTime = arrivalTime;
-            train.isLate = true;
-          }
-        }
+  // Match each live arrival to the nearest scheduled slot ahead of it.
+  for (const update of stopUpdates) {
+    const arrivalTime = new Date(update.arrivalSeconds * 1000);
+    for (const train of trains) {
+      const tDeltaMin =
+        (arrivalTime.getTime() - train.scheduledTime.getTime()) / 1000 / 60;
+      if (tDeltaMin > 0 && tDeltaMin < 15) {
+        train.cars = update.cars;
+        train.actualTime = arrivalTime;
+        train.isLate = true;
       }
     }
   }
@@ -98,15 +78,23 @@ app.get("/", async (c) => {
     cars: v.cars,
     scheduledTime: tFmt.format(v.scheduledTime),
     actualTime: tFmt.format(v.actualTime),
-    minutesToArrival: (v.actualTime.getTime() - now.getTime()) / 1000 / 60,
+    minutesToArrival: Math.round(
+      ((v.actualTime.getTime() - now.getTime()) / 60000) * 10
+    ) / 10,
     isLate: v.isLate,
   }));
 
-  return c.json({
-    stopDisplayName: stop_display_name,
-    routeDisplayName: route_display_name,
-    trains: trainJson,
-  });
+  // RTD republishes every 30s, so a 20s cache can never serve data older
+  // than a single feed tick.
+  return c.json(
+    {
+      stopDisplayName: stopName,
+      routeDisplayName: routeName,
+      trains: trainJson,
+    },
+    200,
+    { "Cache-Control": "public, max-age=20" }
+  );
 });
 
 export default app;

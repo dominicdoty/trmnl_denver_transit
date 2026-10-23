@@ -8,10 +8,9 @@
     "import-gtfs": "./src/import_gtfs_data.js"
   },
   "dependencies": {
-    "gtfs-realtime-bindings": "^1.1.1",
     "hono": "^4.8.12",
     "http-status-codes": "^2.3.0",
-    "long": "^5.3.2"
+    "protobufjs": "^7.1.2"
   },
   "devDependencies": {
     "gtfs": "^4.17.5",
