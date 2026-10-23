@@ -3,17 +3,19 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --ip 127.0.0.1",
-    "deploy": "wrangler deploy --minify",
+    "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "import-gtfs": "./src/import_gtfs_data.js"
+    "import-gtfs": "./src/import_gtfs_data.js",
+    "build": "node build.mjs"
   },
   "dependencies": {
-    "hono": "^4.8.12",
     "http-status-codes": "^2.3.0",
-    "protobufjs": "^7.1.2"
+    "protobufjs": "^8.8.1"
   },
   "devDependencies": {
-    "gtfs": "^4.17.5",
-    "wrangler": "^4.4.0"
+    "esbuild": "^0.28.2",
+    "gtfs": "^4.21.0",
+    "hono": "^4.13.13",
+    "wrangler": "^4.152.0"
   }
 }
